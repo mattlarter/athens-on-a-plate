@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Athens on a plate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Commissioner:wght@400;500;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root{
+  --bg:#F3F5F4; --surface:#FFFFFF; --ink:#16202B; --muted:#5A6672; --line:#DCE2E0;
+  --open:#1E7A46; --soon:#A86500; --closed:#9A3B32;
+  --chip:#E6EBE9; --focus:#1F4E8C;
+  color-scheme: light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0F1519; --surface:#182127; --ink:#E9EEF0; --muted:#9AA6AF; --line:#2A353C;
+    --open:#5FCB8C; --soon:#F0B54A; --closed:#F08A7E; --chip:#222D33; --focus:#8FB6F0;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0F1519; --surface:#182127; --ink:#E9EEF0; --muted:#9AA6AF; --line:#2A353C;
+  --open:#5FCB8C; --soon:#F0B54A; --closed:#F08A7E; --chip:#222D33; --focus:#8FB6F0;
+  color-scheme: dark;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px);height:100%}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Commissioner,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.45;-webkit-text-size-adjust:100%}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding:14px 16px 8px;border-bottom:1px solid var(--line)}
+.top{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+h1{margin:0;font-weight:800;font-size:1.6rem;letter-spacing:-0.02em;line-height:1.1}
+.clock{font-size:.8rem;color:var(--muted);white-space:nowrap}
+.sub{margin:2px 0 10px;font-size:.85rem;color:var(--muted)}
+.search{width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);font-size:16px}
+.chips{display:flex;gap:6px;overflow-x:auto;padding:10px 0 4px;margin:0 -16px;padding-left:16px;padding-right:16px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;border:1px solid transparent;background:var(--chip);border-radius:999px;padding:6px 12px;font-size:.85rem;font-weight:500;display:flex;align-items:center;gap:6px;cursor:pointer}
+.chip .dot{width:9px;height:9px;border-radius:50%;background:var(--c)}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.controls{display:flex;gap:8px;align-items:center;padding-top:6px}
+.seg{display:flex;background:var(--chip);border-radius:10px;padding:3px}
+.seg button{border:0;background:transparent;padding:6px 14px;border-radius:8px;font-weight:600;font-size:.88rem;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.15)}
+.tog{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:6px 10px;font-size:.85rem;font-weight:500;cursor:pointer}
+.tog[aria-pressed="true"]{border-color:var(--ink);background:var(--ink);color:var(--bg)}
+.spacer{flex:1}
+
+main{padding:12px 16px 32px;max-width:720px;margin:0 auto}
+.count{font-size:.85rem;color:var(--muted);margin:2px 0 10px}
+.msg{font-size:.85rem;color:var(--muted);background:var(--chip);border-radius:10px;padding:10px 12px;margin-bottom:10px}
+
+.card{background:var(--surface);border-radius:14px;padding:14px 14px 12px;margin-bottom:10px;border-left:5px solid var(--c)}
+.card.been{opacity:.6}
+.r1{display:flex;align-items:flex-start;gap:8px}
+.card h2{margin:0;font-size:1.12rem;font-weight:600;line-height:1.25;flex:1}
+.save{border:0;background:transparent;font-size:1.3rem;line-height:1;padding:2px 4px;cursor:pointer;color:var(--muted)}
+.save[aria-pressed="true"]{color:#D23B5B}
+.meta{font-size:.82rem;color:var(--muted);margin:2px 0 6px}
+.meta b{color:var(--c);font-weight:600}
+.status{font-size:.88rem;font-weight:600;margin:0 0 6px}
+.status.open{color:var(--open)} .status.soon{color:var(--soon)} .status.closed{color:var(--closed)} .status.unk{color:var(--muted);font-weight:500}
+.note{margin:0 0 10px;font-size:.95rem}
+.who{font-weight:600}
+.acts{display:flex;gap:6px;flex-wrap:wrap}
+.acts a,.acts button{display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:0 12px;border-radius:9px;border:1px solid var(--line);background:transparent;text-decoration:none;font-size:.85rem;font-weight:600;cursor:pointer}
+.acts .go{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.acts button[aria-pressed="true"]{background:var(--chip)}
+.dist{font-weight:500}
+
+#mapWrap{background:var(--surface);border-radius:14px;overflow:hidden;position:relative}
+#map{display:block;width:100%;height:70vh;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
+.mapbar{display:flex;gap:6px;padding:8px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.lm{fill:var(--muted);font-family:inherit}
+.plbl{fill:var(--ink);font-family:inherit;font-weight:600;cursor:pointer;paint-order:stroke;stroke:var(--surface);stroke-width:3px}
+.lmdot{fill:var(--muted);opacity:.5}
+.land{fill:#F4F1EA}
+:root[data-theme="dark"] .land{fill:#1B2328}:root[data-theme="dark"] .seaimg{filter:brightness(.3)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .land{fill:#1B2328}:root:not([data-theme="light"]) .seaimg{filter:brightness(.3)}}
+.rd{fill:none;vector-effect:non-scaling-stroke;stroke-linecap:round;stroke-linejoin:round}
+.r0{stroke:#E9A23B;stroke-width:2.2}.r1{stroke:#C9BFAE;stroke-width:1.3}.r2{stroke:#D8D1C4;stroke-width:1;display:none}.r3{stroke:#CFC6B5;stroke-width:.8;stroke-dasharray:3 2;display:none}
+#map.z1 .r1{stroke-width:1.8}#map.z2 .r2,#map.z3 .r2{display:inline}#map.z3 .r3{display:inline}#map.z3 .r0{stroke-width:4}#map.z3 .r1{stroke-width:3}#map.z3 .r2{stroke-width:2}#map.z2 .r0{stroke-width:3}
+.pin,.plbl,.lm,.lmdot{vector-effect:non-scaling-stroke}
+#map.moving .r2,#map.moving .r3{display:none}
+.pin{cursor:pointer;stroke:var(--surface);stroke-width:2}
+.pin.sel{stroke:var(--ink);stroke-width:3}
+.further{padding:10px 12px;border-top:1px solid var(--line);font-size:.85rem}
+.further h3{margin:0 0 6px;font-size:.9rem}
+.further button{display:flex;align-items:center;gap:8px;border:0;background:transparent;padding:6px 0;cursor:pointer;width:100%;text-align:left}
+.further .dot{width:10px;height:10px;border-radius:50%;background:var(--c);flex:none}
+.maphint{font-size:.8rem;color:var(--muted);margin:8px 2px}
+
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:20;padding:0 10px calc(10px + env(safe-area-inset-bottom,0px));transform:translateY(110%);transition:transform .22s ease}
+.sheet.show{transform:none}
+.sheet .card{max-width:700px;margin:0 auto;box-shadow:0 -6px 24px rgba(0,0,0,.25)}
+.close{border:0;background:var(--chip);border-radius:50%;width:30px;height:30px;font-size:1rem;cursor:pointer;flex:none}
+.empty{text-align:center;color:var(--muted);padding:30px 10px}
+.src{font-size:.78rem;color:var(--muted);margin-top:18px}
+@media (prefers-reduced-motion: reduce){.sheet{transition:none}}
+</style>
+</head>
+<body>
+<header>
+  <div class="top"><h1>Athens on a plate</h1><span class="clock" id="clock"></span></div>
+  <p class="sub">33 picks from David Carter and Nick Molyviatis, from the Guardian’s food guide</p>
+  <input class="search" id="q" type="search" placeholder="Search places, dishes, areas" aria-label="Search">
+  <div class="chips" id="chips" role="group" aria-label="Categories"></div>
+  <div class="controls">
+    <div class="seg" role="group" aria-label="View">
+      <button id="vList" aria-pressed="true">List</button>
+      <button id="vMap" aria-pressed="false">Map</button>
+    </div>
+    <span class="spacer"></span>
+    <button class="tog" id="openNow" aria-pressed="false">Open now</button>
+    <button class="tog" id="near" aria-pressed="false">Nearest</button>
+  </div>
+</header>
+<main>
+  <div id="msg"></div>
+  <p class="count" id="count"></p>
+  <div id="list"></div>
+  <div id="mapView" hidden>
+    <p class="maphint" id="topHint">Tap a dot for details, then Directions for Google Maps. Locate me shows where you are.</p>
+    <div id="mapWrap">
+      <div class="mapbar"><button class="tog" id="zAll">City</button><button class="tog" id="zReg">Coast</button><button class="tog" id="zCtr">Centre</button><button class="tog" id="zHotel">Hotel</button><button class="tog" id="lbl" aria-pressed="false">Names</button><button class="tog" id="locMe" aria-pressed="false">Locate me</button></div>
+      <div id="lmap" style="height:70vh"></div>
+      <div class="further" id="further"></div>
+    </div>
+    <p class="maphint">Map © OpenStreetMap contributors © CARTO.</p>
+  </div>
+  <p class="src">Picks and notes from “Athens on a plate”, the Guardian, 26 Sept 2026. Opening hours from Google listings, shown in Athens time. Check before travelling out of town.</p>
+</main>
+<div class="sheet" id="sheet" aria-live="polite"></div>
+
+<script>
+const CATS = {
+  coffee:{n:"Coffee and pastry",c:"#8A5A2B"},
+  market:{n:"Markets and morning",c:"#5B6B2F"},
+  meat:{n:"Meat tavernas",c:"#B23A2B"},
+  modern:{n:"New-wave",c:"#6B4FA0"},
+  sea:{n:"Seafood",c:"#1F6FA8"},
+  cheap:{n:"Souvlaki and gyros",c:"#B98200"},
+  drink:{n:"Wine and cocktails",c:"#A0306E"},
+  out:{n:"Out of town",c:"#2E7F6E"}
+};
+// hours Mon..Sun; "" closed; null unknown
+const P = [
+{id:"ChIJ-1R9-QW9oRQRuBZHFVgHaIo",n:"Anana Coffee & Food",cat:"coffee",a:"Plaka",lat:37.979075,lng:23.7293905,who:"Both",t:"Both writers’ regular coffee stop. Nick orders a freddo espresso, espresso shaken over ice.",ph:"+302111151788",w:"https://anana.coffee/",h:["08:00-20:00","08:00-20:00","08:00-20:00","08:00-20:00","08:00-20:00","08:30-20:00","09:00-20:00"]},
+{id:"ChIJr6dgSo69oRQRhucWM-rvLKU",n:"Behold The Man",cat:"coffee",a:"Exarchia",lat:37.9868657,lng:23.7348868,who:"David",t:"Exarchia coffee shop with great music; one of the coolest David has been to.",ph:"+302103805644",w:"http://www.beholdtheman.gr/",h:Array(7).fill("07:00-22:00")},
+{id:"ChIJs9Iajju9oRQRBzggB4S4peE",n:"No Crumbs",cat:"coffee",a:"Pangrati",lat:37.9625532,lng:23.7417263,who:"Nick",t:"Opened this year, a little outside the centre. Nick’s pick for breakfast or food on the move.",ph:"+302107518584",w:"",h:Array(7).fill("08:00-17:30")},
+{id:"ChIJP2UxGDy9oRQRz76PkF1TiS4",n:"Fillo",cat:"coffee",a:"Syntagma",lat:37.9766561,lng:23.7327975,who:"Nick",t:"Traditional pies from around Greece. Nick found three regional spanakopitas on one visit.",ph:"+302103215373",w:"http://www.fillo-cafe.gr/",h:["06:30-17:00","06:30-17:00","06:30-17:00","06:30-17:00","06:30-17:00","07:00-16:00",""]},
+{id:"ChIJcSuHNTu9oRQRIaYe-EqVT3o",n:"Ipiros (Oinomageireio Epirus)",cat:"market",a:"Central market",lat:37.9800134,lng:23.7280162,who:"Nick",t:"Inside the meat market; Nick goes around 10.30am. Slow-cooked dishes from huge pots. He gets the tripe soup with plenty of bread.",ph:"+302103240773",w:"https://www.epirustavern.gr/",h:["06:00-19:30","06:00-19:30","06:00-19:30","06:00-19:30","06:00-19:30","06:00-19:30",""]},
+{id:"ChIJW25h6SS9oRQRajkTKiKmQVg",n:"Diporto",cat:"market",a:"Central market",lat:37.9807478,lng:23.7258382,who:"Both",t:"David’s first proper stop, about 11am. Cash only, no menu; wine and water just arrive. Chickpeas, beans, slow-cooked vegetables, sometimes sardines.",ph:"+302103211463",w:"",h:["08:00-17:00","08:00-17:00","08:00-17:00","08:00-17:00","08:00-17:00","12:00-17:00",""]},
+{id:"ChIJmxTsUSO9oRQRLUSSm2pGMTA",n:"Varvakios Central Market",cat:"market",a:"Central market",lat:37.9804286,lng:23.7276638,who:"David",t:"David always walks the central fish and meat markets.",ph:"",w:"",h:["07:00-15:30","07:00-15:30","07:00-15:30","07:00-15:30","07:00-15:30","07:00-18:00",""]},
+{id:"ChIJpS3UlSS9oRQRbiZCqEmM67Y",n:"Miran",cat:"market",a:"Central market",lat:37.98,lng:23.7258333,who:"Nick",t:"Charcuterie shop near Diporto that cures its own meats; big cheese range too. Buy, add bread, take it home.",ph:"+302103217187",w:"https://www.mirandeli.com/miranathens",h:["07:00-20:00","07:00-20:00","07:00-20:00","07:00-20:00","07:00-20:00","07:00-20:00",""]},
+{id:"ChIJ47v7BDa9oRQRE9xkplRF-Qo",n:"Kallidromiou Farmers’ Market",cat:"market",a:"Exarchia",lat:37.9873056,lng:23.7376039,who:"Both",t:"Nick’s big Saturday market with outstanding produce. David says be in Athens on a Saturday for the markets.",ph:"",w:"",h:["","","","","","07:00-15:00",""]},
+{id:"ChIJVUoqWe-9oRQRMMJLELr09xI",n:"Manári Taverna",cat:"meat",a:"Centre",lat:37.9791418,lng:23.7296563,who:"Nick",t:"Central meat chop house. Order lamb chops, pasta with meat juices and tomato salad.",ph:"+302152153804",w:"http://www.manaritaverna.com/",h:Array(7).fill("13:00-00:00")},
+{id:"ChIJ__4KGNyioRQRPtYQqiriFPY",n:"Taverna Spanos",cat:"meat",a:"Kato Patisia",lat:38.011159,lng:23.722324,who:"Nick",t:"Lamb chops and spit-roast meats. Once they run out, they run out.",ph:"+302108327381",w:"https://www.tavernaspanos.gr/",h:["","","18:00-23:00","18:00-23:00","18:00-23:00","18:00-23:00","13:00-20:00"]},
+{id:"ChIJV4tQlyC9oRQRVYlX0eDYRMg",n:"Linou Soumpasis & Sia",cat:"modern",a:"Psyrri",lat:37.9793162,lng:23.7259784,who:"Both",t:"David’s pick for the most forward-thinking restaurant in Athens. Seafood-led, simple room. Nick compares it to Lyle’s meets Brat.",ph:"+302103220300",w:"http://linousoumpasis.gr/",h:["","13:00-01:00","13:00-01:00","13:00-01:00","13:00-01:00","13:00-01:00","10:00-01:00"]},
+{id:"ChIJsZWGvy29oRQRa1OmHuA6FDo",n:"Pharaoh",cat:"modern",a:"Near the Archaeological Museum",lat:37.9869732,lng:23.7307566,who:"Nick",t:"Go for the vegetables and the fermented wheat. Also on Nick’s wine list.",ph:"+302103808412",w:"https://www.pharaoh.gr/",h:["17:30-02:00","17:30-02:00","17:30-02:00","17:30-02:00","13:30-02:00","13:30-02:00",""]},
+{id:"ChIJ1ck4H9W9oRQRu_zumMmHc3g",n:"Ateno",cat:"modern",a:"Centre",lat:37.9783813,lng:23.7281162,who:"Nick",t:"Nick went twice in two days. Order the Greek salad, stuffed vegetables, and fries with mushrooms and eggs.",ph:"+302103223223",w:"http://www.atenoathens.gr/",h:["","13:00-00:00","13:00-00:00","13:00-00:00","13:00-01:00","13:00-01:00","13:00-01:00"]},
+{id:"ChIJt5NN5Ni9oRQRRA-Ec_y2ecY",n:"Ex Machina",cat:"modern",a:"Pangrati",lat:37.9647705,lng:23.7439513,who:"Nick",t:"Saganaki served cold, and a seafood broth dish that changes every few months.",ph:"+302107560362",w:"http://www.exmachinagreece.com/",h:["18:30-01:30","18:30-01:30","18:30-01:30","18:30-01:30","18:30-01:30","18:30-01:30",""]},
+{id:"ChIJB2hTykq9oRQRLdvTeHmPqqI",n:"Akra",cat:"modern",a:"Pangrati",lat:37.9718716,lng:23.7450343,who:"Both",t:"Rustic savoury food, then very technical pastries (David). Nick goes at lunch for smaller portions so he can order more dishes.",ph:"+302107251116",w:"https://instagram.com/akra_ath",h:["17:00-23:00","10:00-23:00","10:00-23:00","10:00-23:00","10:00-23:00","09:00-23:00","09:00-23:00"]},
+{id:"ChIJBSav7zGjoRQRxrZPFlRfu-Y",n:"Travolta",cat:"sea",a:"Peristeri",lat:38.00528,lng:23.7024932,who:"Both",t:"Crudo, whole fish, and a prawn and squid skewer finished with squid ink and olive oil at the table. Expensive. Outside the centre.",ph:"+302105719222",w:"https://travolta.gr/",h:["","13:00-00:30","13:00-00:30","13:00-00:30","13:00-00:30","13:00-00:30","13:00-00:30"]},
+{id:"ChIJt63yxMK9oRQRvpNE8H6WE2M",n:"Phita",cat:"sea",a:"Neos Kosmos",lat:37.9596005,lng:23.7232905,who:"David",t:"Good seafood, a little further out. Listed on Google as Fita.",ph:"+302114148624",w:"",h:["19:00-00:00","19:00-00:00","19:00-00:00","19:00-00:00","19:00-00:00","14:00-17:00,19:00-00:00","14:00-18:00"]},
+{id:"ChIJw5NNOQC9oRQRGloroBiqB7I",n:"Iodio",cat:"sea",a:"Kolonaki",lat:37.9784662,lng:23.7434157,who:"Nick",t:"Nick’s elevated seafood pick. Raw fish under a crisp rice-paper sheet with warm avgolemono (egg and lemon sauce).",ph:"+302130263656",w:"https://iodioathens.gr/",h:Array(7).fill("13:00-23:30")},
+{id:"ChIJaYjGb7O8oRQRFv_ZuhWNelw",n:"Psitopoleio Peloponnisos",cat:"cheap",a:"Egaleo",lat:38.0011769,lng:23.6849409,who:"David",t:"Souvla: huge rotisserie cuts, lamb heads included. Take a taxi. Listed on Google as Grill Peloponnese.",ph:"+302105313530",w:"",h:["","","09:00-23:00","09:00-23:00","09:00-23:00","09:00-23:00","09:00-23:00"]},
+{id:"ChIJpf99gQ69oRQRWHEopFbTN2M",n:"Achilleas Gyros",cat:"cheap",a:"Neos Kosmos",lat:37.9597394,lng:23.7330696,who:"Nick",t:"One of the few places still building its own gyros spit.",ph:"+302109021391",w:"",h:["16:30-00:00","16:30-00:00","16:30-00:00","16:30-00:00","16:30-00:00","",""]},
+{id:"ChIJ67owzjy9oRQRGVELgyd4lgY",n:"Hoocut",cat:"cheap",a:"Centre",lat:37.9768491,lng:23.7280964,who:"Nick",t:"Nick’s central pick. Meat sliced raw, cooked, then chopped: gyros-style, not technically gyros.",ph:"+302103240026",w:"http://www.hoocut.gr/",h:["12:00-23:30","12:00-23:30","12:00-23:30","12:00-23:30","12:00-00:00","12:00-00:00","12:00-23:30"]},
+{id:"ChIJpdaFn129oRQRDQmyiPZTltU",n:"Mandraki",cat:"cheap",a:"Kaisariani",lat:37.9692623,lng:23.7545073,who:"Nick",t:"Late-night gyros, open until about 2am. Huge portions that often sell out.",ph:"+302107244072",w:"http://mandrakh.gr/",h:Array(7).fill("12:00-02:00")},
+{id:"ChIJudm5wkW9oRQRfB-KxXQCmdw",n:"Wine is Fine",cat:"drink",a:"Centre",lat:37.9786563,lng:23.7276028,who:"David",t:"David’s pre-dinner drink.",ph:"+302103230304",w:"https://wineisfine.gr/",h:["18:00-00:30","18:00-00:30","18:00-00:30","18:00-00:30","18:00-00:30","14:00-00:30","14:00-00:30"]},
+{id:"ChIJlzN3PwC9oRQRrOxwMuyrR5A",n:"Epta Martyres",cat:"drink",a:"Neos Kosmos",lat:37.9649432,lng:23.7310477,who:"David",t:"Wine bar from the people behind Loggia on Sifnos. David likes light, zippy whites like Assyrtiko.",ph:"",w:"http://linktr.ee/eptama",h:["18:00-01:00","18:00-01:00","18:00-01:00","18:00-01:00","18:00-02:00","18:30-02:00","15:00-23:00"]},
+{id:"ChIJ30D80iy9oRQRPF5kEDJmvgE",n:"Tanini Agapi Mou",cat:"drink",a:"Exarchia",lat:37.9846826,lng:23.7392507,who:"Nick",t:"Wine bar. Ask about Vidiano, the Greek grape Nick discovered this year.",ph:"+302111150145",w:"https://taniniagapimou.gr/",h:Array(7).fill("18:00-01:00")},
+{id:"ChIJ13n7hoG9oRQRXHgFVrMGEGU",n:"Line",cat:"drink",a:"Petralona",lat:37.9686165,lng:23.7033509,who:"Both",t:"Some of the best cocktails David has had anywhere. Nick orders the Paloma or the rotating punch.",ph:"+302117507185",w:"http://www.lineathens.gr/",h:Array(7).fill("10:00-02:00")},
+{id:"ChIJFVsBjjy9oRQR7XnarON2k94",n:"Baba au Rum",cat:"drink",a:"Centre",lat:37.9773968,lng:23.7298542,who:"David",t:"Cocktail bar David ranks alongside Line.",ph:"+302117109140",w:"https://www.babaaurum.com/",h:["19:00-03:00","19:00-03:00","19:00-03:00","19:00-03:00","19:00-03:00","19:00-03:30","19:00-03:00"]},
+{id:"ChIJMbLXGNq9oRQR2afygzKgiOE",n:"The Bar in Front of the Bar",cat:"drink",a:"Syntagma",lat:37.9755967,lng:23.7321495,who:"Both",t:"Order through a window and drink in the street (Nick). Rumble in the Jungle is the hidden bar through the door behind it (David).",ph:"+302117352018",w:"https://thebarinfrontofthebar.gr/",h:["18:00-02:00","18:00-02:00","18:00-02:00","18:00-02:30","18:00-03:00","18:00-03:00","18:00-02:00"]},
+{id:"ChIJy-9xm0KSoRQRWscNScsWESM",n:"To Trigono",cat:"out",a:"Kalyvia, near the airport",lat:37.8424132,lng:23.9297913,who:"Both",t:"David goes straight here from the airport. Salads, tzatziki and cheese on one side of the menu, grilled and spit-roast meat on the other.",ph:"+302299048540",w:"",h:Array(7).fill("12:00-23:30")},
+{id:"ChIJJWBC1VySoRQRn0O77sKY5vk",n:"Christoforos",cat:"out",a:"Kalyvia, near the airport",lat:37.8407554,lng:23.9271163,who:"Nick",t:"To Trigono’s rival, a short walk away. Empty midweek, hard to get a table at weekends. Nick’s recent choice.",ph:"+302299048266",w:"",h:["12:00-01:00","12:00-01:00","12:00-01:00","12:00-01:00","12:00-01:00","12:00-01:00","12:00-00:00"]},
+{id:"ChIJBeZ567jqoRQRf-wOKeuPvW4",n:"Lake Vouliagmeni",cat:"out",a:"Vouliagmeni coast",lat:37.8078002,lng:23.7855018,who:"David",t:"David recommends the Vouliagmeni coast as an area, not a specific restaurant. No car needed: tram down the coast or bus 122 from Elliniko metro.",ph:"",w:"",h:null}
+];
+
+const DAYS=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+const S={labels:false,cat:"all",q:"",open:false,near:false,view:"list",zoom:"all",me:null,sel:null};
+let saved=new Set(), been=new Set();
+try{saved=new Set(JSON.parse(localStorage.getItem("ath-saved")||"[]"));been=new Set(JSON.parse(localStorage.getItem("ath-been")||"[]"))}catch(e){}
+function persist(){try{localStorage.setItem("ath-saved",JSON.stringify([...saved]));localStorage.setItem("ath-been",JSON.stringify([...been]))}catch(e){}}
+
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const tm=s=>{const[a,b]=s.split(":").map(Number);return a*60+b};
+const fmt=m=>{m=((m%1440)+1440)%1440;return String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0")};
+function ivs(p,d){const s=p.h&&p.h[d];if(!s)return[];return s.split(",").map(r=>{let[a,b]=r.split("-").map(tm);if(b<=a)b+=1440;return[a,b]})}
+
+function athensNow(){
+  const parts=new Intl.DateTimeFormat("en-GB",{timeZone:"Europe/Athens",weekday:"short",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(new Date());
+  const g=t=>parts.find(x=>x.type===t).value;
+  return{d:DAYS.indexOf(g("weekday")),m:Number(g("hour"))*60+Number(g("minute"))};
+}
+function status(p,now){
+  if(!p.h)return{k:"unk",txt:"Hours not listed",open:false};
+  const{d,m}=now, y=(d+6)%7;
+  for(const[a,b]of ivs(p,y)){if(b>1440&&m<b-1440)return op(b-1440-m,b)}
+  for(const[a,b]of ivs(p,d)){if(m>=a&&m<b)return op(b-m,b)}
+  for(const[a]of ivs(p,d)){if(a>m)return{k:"closed",txt:"Closed, opens at "+fmt(a),open:false}}
+  for(let i=1;i<=7;i++){const dd=(d+i)%7,iv=ivs(p,dd);if(iv.length)return{k:"closed",txt:"Closed, opens "+(i===1?"tomorrow":DAYS[dd])+" at "+fmt(iv[0][0]),open:false}}
+  return{k:"closed",txt:"Closed",open:false};
+  function op(left,end){return left<=45?{k:"soon",txt:"Closes soon, at "+fmt(end),open:true}:{k:"open",txt:"Open until "+fmt(end),open:true}}
+}
+function km(p){if(!S.me)return null;const R=6371,r=x=>x*Math.PI/180,dl=r(p.lat-S.me.lat),dn=r(p.lng-S.me.lng);
+  const a=Math.sin(dl/2)**2+Math.cos(r(S.me.lat))*Math.cos(r(p.lat))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(a))}
+const dirUrl=p=>"https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(p.n+" Athens")+"&query_place_id="+p.id;
+
+function filtered(){
+  const now=athensNow(),q=S.q.trim().toLowerCase();
+  let r=P.filter(p=>{
+    if(S.cat==="saved"){if(!saved.has(p.id))return false}
+    else if(S.cat!=="all"&&p.cat!==S.cat)return false;
+    if(q&&!(p.n+" "+p.a+" "+p.t+" "+CATS[p.cat].n).toLowerCase().includes(q))return false;
+    if(S.open&&!status(p,now).open)return false;
+    return true;
+  });
+  if(S.near&&S.me)r.sort((a,b)=>km(a)-km(b));
+  return r;
+}
+
+function card(p,inSheet){
+  const st=status(p,athensNow()),d=km(p),c=CATS[p.cat];
+  return `<article class="card${been.has(p.id)?" been":""}" style="--c:${c.c}">
+  <div class="r1"><h2>${esc(p.n)}</h2>
+  <button class="save" data-save="${p.id}" aria-pressed="${saved.has(p.id)}" aria-label="${saved.has(p.id)?"Remove from saved":"Save"}">${saved.has(p.id)?"♥":"♡"}</button>
+  ${inSheet?`<button class="close" data-close aria-label="Close">✕</button>`:""}</div>
+  <p class="meta"><b>${c.n}</b>, ${esc(p.a)}${d!=null?` <span class="dist">(${d<1?Math.round(d*1000)+" m":d.toFixed(1)+" km"})</span>`:""}</p>
+  <p class="status ${st.k}">${st.txt}</p>
+  <p class="note"><span class="who">${p.who==="Both"?"Both":p.who}:</span> ${esc(p.t)}</p>
+  <div class="acts">
+    <a class="go" href="${dirUrl(p)}" target="_blank" rel="noopener">Directions</a>
+    ${p.ph?`<a href="tel:${p.ph}">Call</a>`:""}
+    ${p.w?`<a href="${p.w}" target="_blank" rel="noopener">Website</a>`:""}
+    <button data-been="${p.id}" aria-pressed="${been.has(p.id)}">${been.has(p.id)?"Been ✓":"Mark as been"}</button>
+  </div></article>`;
+}
+
+function renderChips(){
+  const items=[["all","All",null],...Object.entries(CATS).map(([k,v])=>[k,v.n,v.c]),["saved","Saved ♥",null]];
+  $("#chips").innerHTML=items.map(([k,n,c])=>`<button class="chip" data-cat="${k}" aria-pressed="${S.cat===k}" ${c?`style="--c:${c}"`:""}>${c?'<span class="dot"></span>':""}${n}</button>`).join("");
+}
+function renderList(){
+  const r=filtered();
+  $("#count").textContent=r.length+(r.length===1?" place":" places")+(S.open?" open now":"");
+  $("#list").innerHTML=r.length?r.map(p=>card(p)).join(""):
+    `<div class="empty">${S.cat==="saved"?"Nothing saved yet. Tap ♡ on a place to keep it here.":"No places match. Clear the search or turn off Open now."}</div>`;
+}
+
+// map
+const HOTEL={n:"Coral Hotel",lat:37.924877,lng:23.692019};
+const X=lng=>(lng-B.lng0)/(B.lng1-B.lng0)*W, Y=lat=>(B.lat1-lat)/(B.lat1-B.lat0)*H;
+const LM=[["Acropolis",37.9715,23.7257],["Syntagma",37.9755,23.7348],["Omonia",37.9842,23.7281],["Monastiraki",37.9760,23.7255],["Lycabettus",37.9819,23.7431],["Piraeus road",37.9790,23.7100],["Neos Kosmos",37.9580,23.7280],["Palaio Faliro",37.9300,23.7000]];
+let LMAP=null,LAYER=null,ME=null;
+function initMap(){if(LMAP)return;LMAP=L.map("lmap",{zoomControl:true}).setView([37.965,23.715],13);
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",{maxZoom:19,subdomains:"abcd",attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'}).addTo(LMAP);
+  L.marker([HOTEL.lat,HOTEL.lng],{icon:L.divIcon({className:"",html:'<div style="width:16px;height:16px;background:#16202B;border:2px solid #fff;box-shadow:0 0 0 1px #16202B"></div>',iconSize:[16,16]})}).addTo(LMAP).bindTooltip("Your hotel",{permanent:true,direction:"right",offset:[8,0]});
+  LAYER=L.layerGroup().addTo(LMAP);
+  LMAP.on("locationfound",e=>{S.me={lat:e.latlng.lat,lng:e.latlng.lng};if(!ME){ME=L.circleMarker(e.latlng,{radius:8,color:"#fff",weight:3,fillColor:"#2A7DE1",fillOpacity:1}).addTo(LMAP);LMAP.setView(e.latlng,15)}else ME.setLatLng(e.latlng);if(S.view!=="map")render()});
+  LMAP.on("locationerror",()=>{$("#msg").innerHTML=`<div class="msg">Location isn’t available. Allow location for this site in your browser settings, then tap Locate me again.</div>`});
+}
+function renderMap(){
+  const r=filtered(),outs=r.filter(p=>p.cat==="out");
+  initMap();setTimeout(()=>LMAP.invalidateSize(),0);
+  LAYER.clearLayers();
+  r.forEach(p=>{const m=L.circleMarker([p.lat,p.lng],{radius:S.sel===p.id?11:8,color:S.sel===p.id?"#16202B":"#fff",weight:S.sel===p.id?3:2,fillColor:CATS[p.cat].c,fillOpacity:1}).addTo(LAYER);
+    m.on("click",()=>openSheet(p.id));
+    if(S.labels)m.bindTooltip(esc(p.n.split(" (")[0]),{permanent:true,direction:"right",offset:[8,0]});else m.bindTooltip(esc(p.n));});
+  $("#further").innerHTML=outs.length?`<h3>Further out (tap to open)</h3>`+outs.map(p=>`<button data-pick="${p.id}" style="--c:${CATS[p.cat].c}"><span class="dot"></span>${esc(p.n)}, ${esc(p.a)}</button>`).join(""):"";
+  $("#count").textContent=r.length+(r.length===1?" place":" places")+(S.open?" open now":"");
+}
+function openSheet(id){S.sel=id;const p=P.find(x=>x.id===id);$("#sheet").innerHTML=card(p,true);$("#sheet").classList.add("show");if(S.view==="map")renderMap()}
+function closeSheet(){S.sel=null;$("#sheet").classList.remove("show");if(S.view==="map")renderMap()}
+
+function render(){renderChips();S.view==="list"?renderList():renderMap();
+  if(S.sel&&$("#sheet").classList.contains("show")){const p=P.find(x=>x.id===S.sel);$("#sheet").innerHTML=card(p,true)}}
+function tick(){const n=athensNow();$("#clock").textContent="Athens "+DAYS[n.d]+" "+fmt(n.m);}
+
+document.addEventListener("click",e=>{
+  const t=e.target.closest("button,circle,text");if(!t)return;
+  if(t.dataset.cat){S.cat=t.dataset.cat;render();return}
+  if(t.dataset.save){const id=t.dataset.save;saved.has(id)?saved.delete(id):saved.add(id);persist();render();return}
+  if(t.dataset.been){const id=t.dataset.been;been.has(id)?been.delete(id):been.add(id);persist();render();return}
+  if(t.dataset.pin){openSheet(t.dataset.pin);return}
+  if(t.dataset.pick){openSheet(t.dataset.pick);return}
+  if(t.hasAttribute("data-close")){closeSheet();return}
+});
+$("#q").addEventListener("input",e=>{S.q=e.target.value;render()});
+$("#vList").onclick=()=>{S.view="list";$("#vList").setAttribute("aria-pressed","true");$("#vMap").setAttribute("aria-pressed","false");$("#list").hidden=false;$("#mapView").hidden=true;closeSheet();render()};
+$("#vMap").onclick=()=>{S.view="map";$("#vMap").setAttribute("aria-pressed","true");$("#vList").setAttribute("aria-pressed","false");$("#list").hidden=true;$("#mapView").hidden=false;render()};
+$("#zAll").onclick=()=>LMAP.setView([37.965,23.715],13);
+$("#zReg").onclick=()=>LMAP.fitBounds([[37.80,23.66],[38.02,23.95]]);
+$("#zCtr").onclick=()=>LMAP.setView([37.978,23.729],16);
+$("#zHotel").onclick=()=>LMAP.setView([HOTEL.lat,HOTEL.lng],16);
+$("#lbl").onclick=e=>{S.labels=!S.labels;e.currentTarget.setAttribute("aria-pressed",S.labels);renderMap()};
+$("#locMe").onclick=e=>{e.currentTarget.setAttribute("aria-pressed","true");$("#msg").innerHTML="";LMAP.locate({watch:true,enableHighAccuracy:true})};
+$("#openNow").onclick=e=>{S.open=!S.open;e.currentTarget.setAttribute("aria-pressed",S.open);render()};
+$("#near").onclick=e=>{
+  const b=e.currentTarget;
+  if(S.near){S.near=false;b.setAttribute("aria-pressed","false");render();return}
+  const fail=()=>{$("#msg").innerHTML=`<div class="msg">Location isn’t available. Allow location for this site in your browser settings, then tap Nearest again.</div>`};
+  if(!navigator.geolocation){fail();return}
+  b.textContent="Locating…";
+  navigator.geolocation.getCurrentPosition(pos=>{
+    S.me={lat:pos.coords.latitude,lng:pos.coords.longitude};S.near=true;b.textContent="Nearest";b.setAttribute("aria-pressed","true");$("#msg").innerHTML="";render()},
+    ()=>{b.textContent="Nearest";fail()},{enableHighAccuracy:true,timeout:10000,maximumAge:60000});
+};
+tick();render();
+setInterval(()=>{tick();render()},60000);
+</script>
+</body>
+</html>
