@@ -137,7 +137,7 @@ main{padding:12px 16px 32px;max-width:720px;margin:0 auto}
       <div id="lmap" style="height:70vh"></div>
       <div class="further" id="further"></div>
     </div>
-    <p class="maphint">Map © OpenStreetMap contributors © CARTO.</p>
+    <p class="maphint">Map © OpenStreetMap contributors.</p>
   </div>
   <p class="src">Picks and notes from “Athens on a plate”, the Guardian, 26 Sept 2026. Opening hours from Google listings, shown in Athens time. Check before travelling out of town.</p>
 </main>
@@ -268,7 +268,7 @@ const X=lng=>(lng-B.lng0)/(B.lng1-B.lng0)*W, Y=lat=>(B.lat1-lat)/(B.lat1-B.lat0)
 const LM=[["Acropolis",37.9715,23.7257],["Syntagma",37.9755,23.7348],["Omonia",37.9842,23.7281],["Monastiraki",37.9760,23.7255],["Lycabettus",37.9819,23.7431],["Piraeus road",37.9790,23.7100],["Neos Kosmos",37.9580,23.7280],["Palaio Faliro",37.9300,23.7000]];
 let LMAP=null,LAYER=null,ME=null;
 function initMap(){if(LMAP)return;LMAP=L.map("lmap",{zoomControl:true}).setView([37.965,23.715],13);
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",{maxZoom:19,subdomains:"abcd",attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'}).addTo(LMAP);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(LMAP);
   L.marker([HOTEL.lat,HOTEL.lng],{icon:L.divIcon({className:"",html:'<div style="width:16px;height:16px;background:#16202B;border:2px solid #fff;box-shadow:0 0 0 1px #16202B"></div>',iconSize:[16,16]})}).addTo(LMAP).bindTooltip("Your hotel",{permanent:true,direction:"right",offset:[8,0]});
   LAYER=L.layerGroup().addTo(LMAP);
   LMAP.on("locationfound",e=>{S.me={lat:e.latlng.lat,lng:e.latlng.lng};if(!ME){ME=L.circleMarker(e.latlng,{radius:8,color:"#fff",weight:3,fillColor:"#2A7DE1",fillOpacity:1}).addTo(LMAP);LMAP.setView(e.latlng,15)}else ME.setLatLng(e.latlng);if(S.view!=="map")render()});

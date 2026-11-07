@@ -4,4 +4,4 @@ A phone-friendly list and map of the food picks from "Athens on a plate" (the Gu
 
 Live page: https://mattlarter.github.io/athens-on-a-plate/
 
-Map tiles © OpenStreetMap contributors © CARTO.
+Map tiles © OpenStreetMap contributors.
