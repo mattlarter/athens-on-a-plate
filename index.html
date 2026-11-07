@@ -134,7 +134,7 @@ main{padding:12px 16px 32px;max-width:720px;margin:0 auto}
     <p class="maphint" id="topHint">Tap a dot for details, then Directions for Google Maps. Locate me shows where you are.</p>
     <div id="mapWrap">
       <div class="mapbar"><button class="tog" id="zAll">City</button><button class="tog" id="zReg">Coast</button><button class="tog" id="zCtr">Centre</button><button class="tog" id="zHotel">Hotel</button><button class="tog" id="lbl" aria-pressed="false">Names</button><button class="tog" id="locMe" aria-pressed="false">Locate me</button></div>
-      <div id="lmap" style="height:70vh"></div>
+      <p class="maphint" id="locMsg" aria-live="polite" style="margin:8px 10px;font-weight:600"></p><div id="lmap" style="height:70vh"></div>
       <div class="further" id="further"></div>
     </div>
     <p class="maphint">Map © OpenStreetMap contributors.</p>
@@ -271,8 +271,12 @@ function initMap(){if(LMAP)return;LMAP=L.map("lmap",{zoomControl:true}).setView(
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(LMAP);
   L.marker([HOTEL.lat,HOTEL.lng],{icon:L.divIcon({className:"",html:'<div style="width:16px;height:16px;background:#16202B;border:2px solid #fff;box-shadow:0 0 0 1px #16202B"></div>',iconSize:[16,16]})}).addTo(LMAP).bindTooltip("Your hotel",{permanent:true,direction:"right",offset:[8,0]});
   LAYER=L.layerGroup().addTo(LMAP);
-  LMAP.on("locationfound",e=>{S.me={lat:e.latlng.lat,lng:e.latlng.lng};if(!ME){ME=L.circleMarker(e.latlng,{radius:8,color:"#fff",weight:3,fillColor:"#2A7DE1",fillOpacity:1}).addTo(LMAP);LMAP.setView(e.latlng,15)}else ME.setLatLng(e.latlng);if(S.view!=="map")render()});
-  LMAP.on("locationerror",()=>{$("#msg").innerHTML=`<div class="msg">Location isn’t available. Allow location for this site in your browser settings, then tap Locate me again.</div>`});
+  LMAP.on("locationfound",e=>{if(!LOCATING)return;S.me={lat:e.latlng.lat,lng:e.latlng.lng};
+    const far=e.latlng.distanceTo(L.latLng(37.97,23.72))>60000;
+    if(!ME){ME=L.circleMarker(e.latlng,{radius:8,color:"#fff",weight:3,fillColor:"#2A7DE1",fillOpacity:1}).addTo(LMAP).bindTooltip("You");LMAP.setView(e.latlng,far?11:15)}else ME.setLatLng(e.latlng);
+    locStatus(far?"Found you, but you're outside Athens. Tap City to go back to the map of Athens.":"You're the blue dot (accurate to about "+Math.round(e.accuracy)+" m).")});
+  LMAP.on("locationerror",err=>{if(!LOCATING)return;LOCATING=false;LMAP.stopLocate();const b=$("#locMe");b.setAttribute("aria-pressed","false");b.textContent="Locate me";
+    locStatus(err&&err.code===1?"Location is blocked. On iPhone: Settings, Privacy & Security, Location Services, Safari Websites: While Using. Then reload and tap Locate me.":"Couldn't get your location (no GPS fix). Try again near a window or outdoors.")});
 }
 function renderMap(){
   const r=filtered(),outs=r.filter(p=>p.cat==="out");
@@ -308,7 +312,13 @@ $("#zReg").onclick=()=>LMAP.fitBounds([[37.80,23.66],[38.02,23.95]]);
 $("#zCtr").onclick=()=>LMAP.setView([37.978,23.729],16);
 $("#zHotel").onclick=()=>LMAP.setView([HOTEL.lat,HOTEL.lng],16);
 $("#lbl").onclick=e=>{S.labels=!S.labels;e.currentTarget.setAttribute("aria-pressed",S.labels);renderMap()};
-$("#locMe").onclick=e=>{e.currentTarget.setAttribute("aria-pressed","true");$("#msg").innerHTML="";LMAP.locate({watch:true,enableHighAccuracy:true})};
+let LOCATING=false;
+function locStatus(t){$("#locMsg").textContent=t||""}
+$("#locMe").onclick=e=>{const b=e.currentTarget;
+  if(LOCATING){LOCATING=false;LMAP.stopLocate();b.setAttribute("aria-pressed","false");b.textContent="Locate me";locStatus("");if(ME){LMAP.removeLayer(ME);ME=null}return}
+  if(!navigator.geolocation){locStatus("This browser can't share your location.");return}
+  LOCATING=true;b.setAttribute("aria-pressed","true");b.textContent="Stop locating";locStatus("Finding you…");
+  LMAP.locate({watch:true,enableHighAccuracy:true,timeout:20000,maximumAge:30000})};
 $("#openNow").onclick=e=>{S.open=!S.open;e.currentTarget.setAttribute("aria-pressed",S.open);render()};
 $("#near").onclick=e=>{
   const b=e.currentTarget;
