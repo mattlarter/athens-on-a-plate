@@ -109,6 +109,9 @@ main{padding:12px 16px 32px;max-width:720px;margin:0 auto}
 .src{font-size:.78rem;color:var(--muted);margin-top:18px}
 @media (prefers-reduced-motion: reduce){.sheet{transition:none}}
 .glabel{background:rgba(255,255,255,.92);padding:1px 4px;border-radius:3px;transform:translateX(50%);white-space:nowrap}
+.gsearch{padding:8px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:6px}
+.gsearch gmp-place-autocomplete{width:100%}
+.pins h3{margin:10px 0 6px;font-size:.9rem}
 </style>
 </head>
 <body>
@@ -132,13 +135,15 @@ main{padding:12px 16px 32px;max-width:720px;margin:0 auto}
   <p class="count" id="count"></p>
   <div id="list"></div>
   <div id="mapView" hidden>
-    <p class="maphint" id="topHint">Tap a dot for details, then Directions for Google Maps. Locate me shows where you are.</p>
+    <p class="maphint" id="topHint">Tap a dot for details. Search finds any other place; save it as a pin (purple) to plan your days. Locate me shows where you are.</p>
     <div id="mapWrap">
+      <div class="gsearch" id="gsearch"><p class="maphint" id="gsHint" style="margin:0">Search any place in Athens: type a name, pick it, then save it as a pin.</p></div>
       <div class="mapbar"><button class="tog" id="zAll">City</button><button class="tog" id="zReg">Coast</button><button class="tog" id="zCtr">Centre</button><button class="tog" id="zHotel">Hotel</button><button class="tog" id="lbl" aria-pressed="false">Names</button><button class="tog" id="locMe" aria-pressed="false">Locate me</button></div>
       <p class="maphint" id="locMsg" aria-live="polite" style="margin:8px 10px;font-weight:600"></p><div id="lmap" style="height:70vh"></div>
       <div class="further" id="further"></div>
+      <div class="further pins" id="pinList"></div>
     </div>
-    <p class="maphint">Map © OpenStreetMap contributors.</p>
+    <p class="maphint">Map: Google Maps (OpenStreetMap if Google can’t load). Pins are saved on this phone only.</p>
   </div>
   <p class="src">Picks and notes from “Athens on a plate”, the Guardian, 26 Sept 2026. Opening hours from Google listings, shown in Athens time. Check before travelling out of town.</p>
 </main>
@@ -318,15 +323,62 @@ function renderMap(){
     r.forEach(p=>{const sel=S.sel===p.id;const m=new google.maps.Marker({map:GMAP,position:{lat:p.lat,lng:p.lng},title:p.n,zIndex:sel?500:10,
         icon:dotIcon(CATS[p.cat].c,sel),label:S.labels?{text:p.n.split(" (")[0],className:"glabel",color:"#16202B",fontSize:"11px",fontWeight:"600"}:null});
       m.addListener("click",()=>openSheet(p.id));GMARK.push(m)});
+    renderPins();initSearch();
     return}
   setTimeout(()=>LMAP.invalidateSize(),0);
+  $("#gsHint").textContent="Search needs Google Maps, which didn't load.";renderPins();
   LAYER.clearLayers();
   r.forEach(p=>{const m=L.circleMarker([p.lat,p.lng],{radius:S.sel===p.id?11:8,color:S.sel===p.id?"#16202B":"#fff",weight:S.sel===p.id?3:2,fillColor:CATS[p.cat].c,fillOpacity:1}).addTo(LAYER);
     m.on("click",()=>openSheet(p.id));
     if(S.labels)m.bindTooltip(esc(p.n.split(" (")[0]),{permanent:true,direction:"right",offset:[8,0]});else m.bindTooltip(esc(p.n));});
+  pins.forEach(p=>{L.circleMarker([p.lat,p.lng],{radius:8,color:"#fff",weight:2,fillColor:PINC,fillOpacity:1}).addTo(LAYER).on("click",()=>showPin(p,false)).bindTooltip(esc(p.n))});
 }
+
+// ---- search + pins ----
+let pins=[];try{pins=JSON.parse(localStorage.getItem("ath-pins")||"[]")}catch(e){}
+function savePins(){try{localStorage.setItem("ath-pins",JSON.stringify(pins))}catch(e){}}
+let GPINS=[],GTEMP=null,TEMP=null,SEARCH_READY=false;
+const PINC="#7B3FE4";
+function pinDist(p){return dist(p,{lat:HOTEL.lat,lng:HOTEL.lng})/1000}
+function pinDir(p){return "https://www.google.com/maps/dir/?api=1&origin="+HOTEL.lat+","+HOTEL.lng+"&destination="+p.lat+","+p.lng+(p.pid?"&destination_place_id="+encodeURIComponent(p.pid):"")+"&travelmode=transit"}
+function pinCard(p,isTemp){const d=pinDist(p),saved=pins.some(x=>x.id===p.id);
+  return `<article class="card" style="--c:${PINC}">
+  <div class="r1"><h2>${esc(p.n)}</h2><button class="close" data-close aria-label="Close">✕</button></div>
+  <p class="meta"><b>${saved?"Your pin":"Search result"}</b>, ${esc(p.a||"")} <span class="dist">(${d<1?Math.round(d*1000)+" m":d.toFixed(1)+" km"} from the hotel)</span></p>
+  ${p.hrs?`<p class="note">${esc(p.hrs)}</p>`:""}
+  <div class="acts">
+    <a class="go" href="${pinDir(p)}" target="_blank" rel="noopener">Directions from hotel</a>
+    ${p.url?`<a href="${p.url}" target="_blank" rel="noopener">Google Maps</a>`:""}
+    ${p.web?`<a href="${p.web}" target="_blank" rel="noopener">Website</a>`:""}
+    ${saved?`<button data-pindel="${esc(p.id)}">Remove pin</button>`:`<button data-pinsave="1">Save as pin</button>`}
+  </div></article>`}
+function showPin(p,isTemp){TEMP=isTemp?p:null;S.sel=null;$("#sheet").innerHTML=pinCard(p,isTemp);$("#sheet").classList.add("show")}
+function renderPins(){
+  if(GMODE==="g"&&GMAP){GPINS.forEach(m=>m.setMap(null));GPINS=[];
+    pins.forEach(p=>{const m=new google.maps.Marker({map:GMAP,position:{lat:p.lat,lng:p.lng},title:p.n,zIndex:400,
+      icon:{path:"M 0 -14 L 8 0 L 0 14 L -8 0 Z",fillColor:PINC,fillOpacity:1,strokeColor:"#fff",strokeWeight:2,labelOrigin:new google.maps.Point(12,0)},
+      label:S.labels?{text:p.n,className:"glabel",color:"#16202B",fontSize:"11px",fontWeight:"600"}:null});
+      m.addListener("click",()=>showPin(p,false));GPINS.push(m)})}
+  const box=$("#pinList");if(box)box.innerHTML=pins.length?`<h3>Your pins</h3>`+pins.map(p=>`<button data-pinopen="${esc(p.id)}" style="--c:${PINC}"><span class="dot"></span>${esc(p.n)}</button>`).join(""):"";
+}
+async function initSearch(){if(SEARCH_READY||GMODE!=="g")return;SEARCH_READY=true;
+  try{const {PlaceAutocompleteElement}=await google.maps.importLibrary("places");
+    const ac=new PlaceAutocompleteElement({includedRegionCodes:["gr"],locationBias:{center:{lat:37.97,lng:23.73},radius:50000}});
+    $("#gsearch").appendChild(ac);
+    const handle=async place=>{try{
+        await place.fetchFields({fields:["id","displayName","formattedAddress","location","googleMapsURI","websiteURI","regularOpeningHours"]});
+        const loc=place.location;const p={id:"g:"+place.id,pid:place.id,n:place.displayName||"Place",a:place.formattedAddress||"",lat:loc.lat(),lng:loc.lng(),url:place.googleMapsURI||"",web:place.websiteURI||"",
+          hrs:place.regularOpeningHours&&place.regularOpeningHours.weekdayDescriptions?place.regularOpeningHours.weekdayDescriptions.join(" · "):""};
+        if(GTEMP)GTEMP.setMap(null);
+        GTEMP=new google.maps.Marker({map:GMAP,position:{lat:p.lat,lng:p.lng},zIndex:600,title:p.n});
+        GMAP.panTo({lat:p.lat,lng:p.lng});if(GMAP.getZoom()<14)GMAP.setZoom(15);
+        showPin(p,true)}catch(err){$("#gsHint").textContent="Couldn't load that place. Search needs Places API (New) switched on for the key in Google Cloud."}};
+    ac.addEventListener("gmp-select",ev=>{if(ev.placePrediction)handle(ev.placePrediction.toPlace())});
+    ac.addEventListener("gmp-placeselect",ev=>{if(ev.place)handle(ev.place)});
+  }catch(err){$("#gsHint").textContent="Search isn't available: switch on Places API (New) for the key in Google Cloud."}}
+
 function openSheet(id){S.sel=id;const p=P.find(x=>x.id===id);$("#sheet").innerHTML=card(p,true);$("#sheet").classList.add("show");if(S.view==="map")renderMap()}
-function closeSheet(){S.sel=null;$("#sheet").classList.remove("show");if(S.view==="map")renderMap()}
+function closeSheet(){S.sel=null;if(TEMP&&GTEMP&&!pins.some(x=>x.id===TEMP.id)){GTEMP.setMap(null);GTEMP=null}TEMP=null;$("#sheet").classList.remove("show");if(S.view==="map")renderMap()}
 
 function render(){renderChips();S.view==="list"?renderList():renderMap();
   if(S.sel&&$("#sheet").classList.contains("show")){const p=P.find(x=>x.id===S.sel);$("#sheet").innerHTML=card(p,true)}}
@@ -339,6 +391,9 @@ document.addEventListener("click",e=>{
   if(t.dataset.been){const id=t.dataset.been;been.has(id)?been.delete(id):been.add(id);persist();render();return}
   if(t.dataset.pin){openSheet(t.dataset.pin);return}
   if(t.dataset.pick){openSheet(t.dataset.pick);return}
+  if(t.dataset.pinsave){if(TEMP&&!pins.some(x=>x.id===TEMP.id)){pins.push(TEMP);savePins();if(GTEMP){GTEMP.setMap(null);GTEMP=null}renderPins();showPin(TEMP,false)}return}
+  if(t.dataset.pindel){pins=pins.filter(x=>x.id!==t.dataset.pindel);savePins();renderPins();closeSheet();return}
+  if(t.dataset.pinopen){const p=pins.find(x=>x.id===t.dataset.pinopen);if(p){if(GMODE==="g"&&GMAP){GMAP.panTo({lat:p.lat,lng:p.lng});if(GMAP.getZoom()<14)GMAP.setZoom(15)}else if(LMAP)LMAP.setView([p.lat,p.lng],15);showPin(p,false)}return}
   if(t.hasAttribute("data-close")){closeSheet();return}
 });
 $("#q").addEventListener("input",e=>{S.q=e.target.value;render()});
