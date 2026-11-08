@@ -108,6 +108,7 @@ main{padding:12px 16px 32px;max-width:720px;margin:0 auto}
 .empty{text-align:center;color:var(--muted);padding:30px 10px}
 .src{font-size:.78rem;color:var(--muted);margin-top:18px}
 @media (prefers-reduced-motion: reduce){.sheet{transition:none}}
+.glabel{background:rgba(255,255,255,.92);padding:1px 4px;border-radius:3px;transform:translateX(50%);white-space:nowrap}
 </style>
 </head>
 <body>
@@ -268,26 +269,61 @@ const HOTEL={n:"Coral Hotel",lat:37.924877,lng:23.692019};
 const X=lng=>(lng-B.lng0)/(B.lng1-B.lng0)*W, Y=lat=>(B.lat1-lat)/(B.lat1-B.lat0)*H;
 const LM=[["Acropolis",37.9715,23.7257],["Syntagma",37.9755,23.7348],["Omonia",37.9842,23.7281],["Monastiraki",37.9760,23.7255],["Lycabettus",37.9819,23.7431],["Piraeus road",37.9790,23.7100],["Neos Kosmos",37.9580,23.7280],["Palaio Faliro",37.9300,23.7000]];
 let LMAP=null,LAYER=null,ME=null;
-function initMap(){if(LMAP)return;LMAP=L.map("lmap",{zoomControl:true}).setView([37.965,23.715],13);
+// Google Maps (primary). Falls back to OpenStreetMap/Leaflet if the key fails or Google can't load.
+const GKEY="AIzaSyAMwQolXVzfBJRXZHI2f7bZwgBM1H91VFM";
+let GMODE=null; // "g" | "l" | null (loading)
+let GMAP=null,GMARK=[],GHOTEL=null,GME=null,GWATCH=null;
+window.gm_authFailure=()=>{if(GMODE==="l")return;GMODE="l";GMAP=null;$("#lmap").innerHTML="";locStatus("Google Maps key rejected, showing OpenStreetMap instead.");if(S.view==="map")renderMap()};
+window.gReady=()=>{if(GMODE===null){GMODE="g";if(S.view==="map")renderMap()}};
+(function(){const sc=document.createElement("script");sc.async=true;
+  sc.src="https://maps.googleapis.com/maps/api/js?key="+GKEY+"&callback=gReady&v=weekly&language=en&region=GR";
+  sc.onerror=()=>{GMODE="l";if(S.view==="map")renderMap()};document.head.appendChild(sc);
+  setTimeout(()=>{if(GMODE===null){GMODE="l";if(S.view==="map")renderMap()}},8000)})();
+function dist(a,b){const R=6371000,r=x=>x*Math.PI/180,dl=r(b.lat-a.lat),dn=r(b.lng-a.lng);
+  const h=Math.sin(dl/2)**2+Math.cos(r(a.lat))*Math.cos(r(b.lat))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
+function dotIcon(color,sel,scale){return{path:google.maps.SymbolPath.CIRCLE,scale:scale||(sel?10:7),fillColor:color,fillOpacity:1,
+  strokeColor:sel?"#16202B":"#fff",strokeWeight:sel?3:2,labelOrigin:new google.maps.Point(2.6,0)}}
+function gInit(){if(GMAP)return;
+  GMAP=new google.maps.Map($("#lmap"),{center:{lat:37.965,lng:23.715},zoom:13,mapTypeControl:false,streetViewControl:false,fullscreenControl:true,clickableIcons:true,gestureHandling:"greedy"});
+  GHOTEL=new google.maps.Marker({map:GMAP,position:{lat:HOTEL.lat,lng:HOTEL.lng},zIndex:999,title:"Your hotel",
+    icon:{path:"M -6 -6 L 6 -6 L 6 6 L -6 6 Z",fillColor:"#16202B",fillOpacity:1,strokeColor:"#fff",strokeWeight:2,labelOrigin:new google.maps.Point(10,0)},
+    label:{text:"Your hotel",className:"glabel",color:"#16202B",fontWeight:"700",fontSize:"12px"}});
+}
+function initMap(){
+  if(GMODE==="g"){gInit();return}
+  if(LMAP)return;LMAP=L.map("lmap",{zoomControl:true}).setView([37.965,23.715],13);
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(LMAP);
   L.marker([HOTEL.lat,HOTEL.lng],{icon:L.divIcon({className:"",html:'<div style="width:16px;height:16px;background:#16202B;border:2px solid #fff;box-shadow:0 0 0 1px #16202B"></div>',iconSize:[16,16]})}).addTo(LMAP).bindTooltip("Your hotel",{permanent:true,direction:"right",offset:[8,0]});
   LAYER=L.layerGroup().addTo(LMAP);
-  LMAP.on("locationfound",e=>{if(!LOCATING)return;S.me={lat:e.latlng.lat,lng:e.latlng.lng};
-    const far=e.latlng.distanceTo(L.latLng(37.97,23.72))>60000;
-    if(!ME){ME=L.circleMarker(e.latlng,{radius:8,color:"#fff",weight:3,fillColor:"#2A7DE1",fillOpacity:1}).addTo(LMAP).bindTooltip("You");LMAP.setView(e.latlng,far?11:15)}else ME.setLatLng(e.latlng);
-    locStatus(far?"Found you, but you're outside Athens. Tap City to go back to the map of Athens.":"You're the blue dot (accurate to about "+Math.round(e.accuracy)+" m).")});
-  LMAP.on("locationerror",err=>{if(!LOCATING)return;LOCATING=false;LMAP.stopLocate();const b=$("#locMe");b.setAttribute("aria-pressed","false");b.textContent="Locate me";
-    locStatus(err&&err.code===1?"Location is blocked. On iPhone: Settings, Privacy & Security, Location Services, Safari Websites: While Using. Then reload and tap Locate me.":"Couldn't get your location (no GPS fix). Try again near a window or outdoors.")});
 }
+// shared view helpers
+function mapView(lat,lng,z){if(GMODE==="g"&&GMAP){GMAP.setCenter({lat,lng});GMAP.setZoom(z)}else if(LMAP)LMAP.setView([lat,lng],z)}
+function mapFit(s,w,n,e){if(GMODE==="g"&&GMAP)GMAP.fitBounds({south:s,west:w,north:n,east:e});else if(LMAP)LMAP.fitBounds([[s,w],[n,e]])}
+function showMe(lat,lng,acc){S.me={lat,lng};const far=dist({lat,lng},{lat:37.97,lng:23.72})>60000;let first=false;
+  if(GMODE==="g"&&GMAP){if(!GME){first=true;GME=new google.maps.Marker({map:GMAP,position:{lat,lng},zIndex:1000,title:"You",
+      icon:{path:google.maps.SymbolPath.CIRCLE,scale:8,fillColor:"#2A7DE1",fillOpacity:1,strokeColor:"#fff",strokeWeight:3}})}else GME.setPosition({lat,lng})}
+  else if(LMAP){if(!ME){first=true;ME=L.circleMarker([lat,lng],{radius:8,color:"#fff",weight:3,fillColor:"#2A7DE1",fillOpacity:1}).addTo(LMAP).bindTooltip("You")}else ME.setLatLng([lat,lng])}
+  if(first)mapView(lat,lng,far?11:15);
+  locStatus(far?"Found you, but you're outside Athens. Tap City to go back to the map of Athens.":"You're the blue dot (accurate to about "+Math.round(acc)+" m).")}
+function hideMe(){if(GME){GME.setMap(null);GME=null}if(ME&&LMAP){LMAP.removeLayer(ME);ME=null}}
 function renderMap(){
   const r=filtered(),outs=r.filter(p=>p.cat==="out");
-  initMap();setTimeout(()=>LMAP.invalidateSize(),0);
+  $("#further").innerHTML=outs.length?`<h3>Further out (tap to open)</h3>`+outs.map(p=>`<button data-pick="${p.id}" style="--c:${CATS[p.cat].c}"><span class="dot"></span>${esc(p.n)}, ${esc(p.a)}</button>`).join(""):"";
+  $("#count").textContent=r.length+(r.length===1?" place":" places")+(S.open?" open now":"");
+  if(GMODE===null){locStatus("Loading Google Maps…");return}
+  if($("#locMsg").textContent==="Loading Google Maps…")locStatus("");
+  initMap();
+  if(GMODE==="g"){
+    GMARK.forEach(m=>m.setMap(null));GMARK=[];
+    r.forEach(p=>{const sel=S.sel===p.id;const m=new google.maps.Marker({map:GMAP,position:{lat:p.lat,lng:p.lng},title:p.n,zIndex:sel?500:10,
+        icon:dotIcon(CATS[p.cat].c,sel),label:S.labels?{text:p.n.split(" (")[0],className:"glabel",color:"#16202B",fontSize:"11px",fontWeight:"600"}:null});
+      m.addListener("click",()=>openSheet(p.id));GMARK.push(m)});
+    return}
+  setTimeout(()=>LMAP.invalidateSize(),0);
   LAYER.clearLayers();
   r.forEach(p=>{const m=L.circleMarker([p.lat,p.lng],{radius:S.sel===p.id?11:8,color:S.sel===p.id?"#16202B":"#fff",weight:S.sel===p.id?3:2,fillColor:CATS[p.cat].c,fillOpacity:1}).addTo(LAYER);
     m.on("click",()=>openSheet(p.id));
     if(S.labels)m.bindTooltip(esc(p.n.split(" (")[0]),{permanent:true,direction:"right",offset:[8,0]});else m.bindTooltip(esc(p.n));});
-  $("#further").innerHTML=outs.length?`<h3>Further out (tap to open)</h3>`+outs.map(p=>`<button data-pick="${p.id}" style="--c:${CATS[p.cat].c}"><span class="dot"></span>${esc(p.n)}, ${esc(p.a)}</button>`).join(""):"";
-  $("#count").textContent=r.length+(r.length===1?" place":" places")+(S.open?" open now":"");
 }
 function openSheet(id){S.sel=id;const p=P.find(x=>x.id===id);$("#sheet").innerHTML=card(p,true);$("#sheet").classList.add("show");if(S.view==="map")renderMap()}
 function closeSheet(){S.sel=null;$("#sheet").classList.remove("show");if(S.view==="map")renderMap()}
@@ -308,18 +344,21 @@ document.addEventListener("click",e=>{
 $("#q").addEventListener("input",e=>{S.q=e.target.value;render()});
 $("#vList").onclick=()=>{S.view="list";$("#vList").setAttribute("aria-pressed","true");$("#vMap").setAttribute("aria-pressed","false");$("#list").hidden=false;$("#mapView").hidden=true;closeSheet();render()};
 $("#vMap").onclick=()=>{S.view="map";$("#vMap").setAttribute("aria-pressed","true");$("#vList").setAttribute("aria-pressed","false");$("#list").hidden=true;$("#mapView").hidden=false;render()};
-$("#zAll").onclick=()=>LMAP.setView([37.965,23.715],13);
-$("#zReg").onclick=()=>LMAP.fitBounds([[37.80,23.66],[38.02,23.95]]);
-$("#zCtr").onclick=()=>LMAP.setView([37.978,23.729],16);
-$("#zHotel").onclick=()=>LMAP.setView([HOTEL.lat,HOTEL.lng],16);
+$("#zAll").onclick=()=>mapView(37.965,23.715,13);
+$("#zReg").onclick=()=>mapFit(37.80,23.66,38.02,23.95);
+$("#zCtr").onclick=()=>mapView(37.978,23.729,16);
+$("#zHotel").onclick=()=>mapView(HOTEL.lat,HOTEL.lng,16);
 $("#lbl").onclick=e=>{S.labels=!S.labels;e.currentTarget.setAttribute("aria-pressed",S.labels);renderMap()};
 let LOCATING=false;
 function locStatus(t){$("#locMsg").textContent=t||""}
 $("#locMe").onclick=e=>{const b=e.currentTarget;
-  if(LOCATING){LOCATING=false;LMAP.stopLocate();b.setAttribute("aria-pressed","false");b.textContent="Locate me";locStatus("");if(ME){LMAP.removeLayer(ME);ME=null}return}
+  if(LOCATING){LOCATING=false;if(GWATCH!==null){navigator.geolocation.clearWatch(GWATCH);GWATCH=null}b.setAttribute("aria-pressed","false");b.textContent="Locate me";locStatus("");hideMe();return}
   if(!navigator.geolocation){locStatus("This browser can't share your location.");return}
   LOCATING=true;b.setAttribute("aria-pressed","true");b.textContent="Stop locating";locStatus("Finding you…");
-  LMAP.locate({watch:true,enableHighAccuracy:true,timeout:20000,maximumAge:30000})};
+  GWATCH=navigator.geolocation.watchPosition(pos=>{if(!LOCATING)return;showMe(pos.coords.latitude,pos.coords.longitude,pos.coords.accuracy)},
+    err=>{if(!LOCATING)return;LOCATING=false;if(GWATCH!==null){navigator.geolocation.clearWatch(GWATCH);GWATCH=null}b.setAttribute("aria-pressed","false");b.textContent="Locate me";
+      locStatus(err&&err.code===1?"Location is blocked. On iPhone: Settings, Privacy & Security, Location Services, Safari Websites: While Using. Then reload and tap Locate me.":"Couldn't get your location (no GPS fix). Try again near a window or outdoors.")},
+    {enableHighAccuracy:true,timeout:20000,maximumAge:30000})};
 $("#openNow").onclick=e=>{S.open=!S.open;e.currentTarget.setAttribute("aria-pressed",S.open);render()};
 $("#near").onclick=e=>{
   const b=e.currentTarget;
