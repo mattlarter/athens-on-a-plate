@@ -109,8 +109,15 @@ main{padding:12px 16px 32px;max-width:720px;margin:0 auto}
 .src{font-size:.78rem;color:var(--muted);margin-top:18px}
 @media (prefers-reduced-motion: reduce){.sheet{transition:none}}
 .glabel{background:rgba(255,255,255,.92);padding:1px 4px;border-radius:3px;transform:translateX(50%);white-space:nowrap}
-.gsearch{padding:8px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:6px}
-.gsearch gmp-place-autocomplete{width:100%}
+.gsearch{padding:8px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.srow{display:flex;gap:6px;align-items:center}
+.srow .search{flex:1;min-width:0}
+.route{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:10px;padding:8px;font-size:.85rem}
+.route label{display:flex;gap:6px;align-items:center}
+.route select{flex:1;min-width:0;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--surface);font-size:16px}
+.go2{background:#16202B;color:#fff;border-color:#16202B}
+.dist{color:var(--muted);font-size:.8rem}
+body.mapmode header{position:static}
 .pins h3{margin:10px 0 6px;font-size:.9rem}
 </style>
 </head>
@@ -137,7 +144,17 @@ main{padding:12px 16px 32px;max-width:720px;margin:0 auto}
   <div id="mapView" hidden>
     <p class="maphint" id="topHint">Tap a dot for details. Search finds any other place; save it as a pin (purple) to plan your days. Locate me shows where you are.</p>
     <div id="mapWrap">
-      <div class="gsearch" id="gsearch"><p class="maphint" id="gsHint" style="margin:0">Search any place in Athens: type a name, pick it, then save it as a pin.</p></div>
+      <div class="gsearch" id="gsearch">
+        <form id="sForm" class="srow" autocomplete="off"><input id="sQ" class="search" type="search" enterkeyhint="search" placeholder="Search any place, e.g. Lycabettus or bakery Koukaki"><button class="tog" type="submit">Search</button><button class="tog" type="button" id="sClear">Clear</button></form>
+        <p class="maphint" id="gsHint" style="margin:0">Results show on the map in orange. Save any as a pin (purple) to plan your days.</p>
+        <div class="further pins" id="sResults" style="border:0;padding:0"></div>
+        <div class="route" id="route"><b>Directions</b>
+          <label>From <select id="rFrom"></select></label>
+          <label>To <select id="rTo"></select></label>
+          <div class="srow"><select id="rMode"><option value="transit">Public transport</option><option value="walking">Walking</option><option value="driving">Driving</option></select><button class="tog" type="button" id="rSwap">Swap</button><button class="tog go2" type="button" id="rGo">Open in Google Maps</button></div>
+          <p class="maphint" id="rMsg" style="margin:0"></p>
+        </div>
+      </div>
       <div class="mapbar"><button class="tog" id="zAll">City</button><button class="tog" id="zReg">Coast</button><button class="tog" id="zCtr">Centre</button><button class="tog" id="zHotel">Hotel</button><button class="tog" id="lbl" aria-pressed="false">Names</button><button class="tog" id="locMe" aria-pressed="false">Locate me</button></div>
       <p class="maphint" id="locMsg" aria-live="polite" style="margin:8px 10px;font-weight:600"></p><div id="lmap" style="height:70vh"></div>
       <div class="further" id="further"></div>
@@ -226,7 +243,7 @@ function status(p,now){
 }
 function km(p){if(!S.me)return null;const R=6371,r=x=>x*Math.PI/180,dl=r(p.lat-S.me.lat),dn=r(p.lng-S.me.lng);
   const a=Math.sin(dl/2)**2+Math.cos(r(S.me.lat))*Math.cos(r(p.lat))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(a))}
-const dirUrl=p=>"https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(p.n+" Athens")+"&query_place_id="+p.id;
+const dirUrl=p=>"https://www.google.com/maps/dir/?api=1&travelmode=transit&destination="+p.lat+","+p.lng+"&destination_place_id="+encodeURIComponent(p.id);
 
 function filtered(){
   const now=athensNow(),q=S.q.trim().toLowerCase();
@@ -251,10 +268,11 @@ function card(p,inSheet){
   <p class="status ${st.k}">${st.txt}</p>
   <p class="note"><span class="who">${p.who==="Both"?"Both":p.who}:</span> ${esc(p.t)}</p>
   <div class="acts">
-    <a class="go" href="${dirUrl(p)}" target="_blank" rel="noopener">Directions</a>
+    <a class="go" href="${dirUrl(p)}" target="_blank" rel="noopener">Directions from my location</a>
     ${p.ph?`<a href="tel:${p.ph}">Call</a>`:""}
     ${p.w?`<a href="${p.w}" target="_blank" rel="noopener">Website</a>`:""}
     <button data-been="${p.id}" aria-pressed="${been.has(p.id)}">${been.has(p.id)?"Been ✓":"Mark as been"}</button>
+    <button data-cfrom="${p.id}">Set as From</button><button data-cto="${p.id}">Set as To</button>
   </div></article>`;
 }
 
@@ -289,7 +307,7 @@ function dist(a,b){const R=6371000,r=x=>x*Math.PI/180,dl=r(b.lat-a.lat),dn=r(b.l
 function dotIcon(color,sel,scale){return{path:google.maps.SymbolPath.CIRCLE,scale:scale||(sel?10:7),fillColor:color,fillOpacity:1,
   strokeColor:sel?"#16202B":"#fff",strokeWeight:sel?3:2,labelOrigin:new google.maps.Point(2.6,0)}}
 function gInit(){if(GMAP)return;
-  GMAP=new google.maps.Map($("#lmap"),{center:{lat:37.965,lng:23.715},zoom:13,mapTypeControl:false,streetViewControl:false,fullscreenControl:true,clickableIcons:true,gestureHandling:"greedy"});
+  GMAP=new google.maps.Map($("#lmap"),{center:{lat:37.965,lng:23.715},zoom:13,mapTypeControl:false,streetViewControl:false,fullscreenControl:true,clickableIcons:true,gestureHandling:"cooperative"});
   GHOTEL=new google.maps.Marker({map:GMAP,position:{lat:HOTEL.lat,lng:HOTEL.lng},zIndex:999,title:"Your hotel",
     icon:{path:"M -6 -6 L 6 -6 L 6 6 L -6 6 Z",fillColor:"#16202B",fillOpacity:1,strokeColor:"#fff",strokeWeight:2,labelOrigin:new google.maps.Point(10,0)},
     label:{text:"Your hotel",className:"glabel",color:"#16202B",fontWeight:"700",fontSize:"12px"}});
@@ -323,7 +341,7 @@ function renderMap(){
     r.forEach(p=>{const sel=S.sel===p.id;const m=new google.maps.Marker({map:GMAP,position:{lat:p.lat,lng:p.lng},title:p.n,zIndex:sel?500:10,
         icon:dotIcon(CATS[p.cat].c,sel),label:S.labels?{text:p.n.split(" (")[0],className:"glabel",color:"#16202B",fontSize:"11px",fontWeight:"600"}:null});
       m.addListener("click",()=>openSheet(p.id));GMARK.push(m)});
-    renderPins();initSearch();
+    renderPins();
     return}
   setTimeout(()=>LMAP.invalidateSize(),0);
   $("#gsHint").textContent="Search needs Google Maps, which didn't load.";renderPins();
@@ -334,51 +352,74 @@ function renderMap(){
   pins.forEach(p=>{L.circleMarker([p.lat,p.lng],{radius:8,color:"#fff",weight:2,fillColor:PINC,fillOpacity:1}).addTo(LAYER).on("click",()=>showPin(p,false)).bindTooltip(esc(p.n))});
 }
 
-// ---- search + pins ----
+// ---- search, results, pins, route planner ----
 let pins=[];try{pins=JSON.parse(localStorage.getItem("ath-pins")||"[]")}catch(e){}
 function savePins(){try{localStorage.setItem("ath-pins",JSON.stringify(pins))}catch(e){}}
-let GPINS=[],GTEMP=null,TEMP=null,SEARCH_READY=false;
-const PINC="#7B3FE4";
+let GPINS=[],GRES=[],RESULTS=[],CUR=null,PLACES_LIB=null;
+const PINC="#7B3FE4",RESC="#E8590C";
+const fmtD=d=>d<1?Math.round(d*1000)+" m":d.toFixed(1)+" km";
 function pinDist(p){return dist(p,{lat:HOTEL.lat,lng:HOTEL.lng})/1000}
-function pinDir(p){return "https://www.google.com/maps/dir/?api=1&origin="+HOTEL.lat+","+HOTEL.lng+"&destination="+p.lat+","+p.lng+(p.pid?"&destination_place_id="+encodeURIComponent(p.pid):"")+"&travelmode=transit"}
-function pinCard(p,isTemp){const d=pinDist(p),saved=pins.some(x=>x.id===p.id);
-  return `<article class="card" style="--c:${PINC}">
+function enc(p){return p.pid?encodeURIComponent(p.pid):""}
+function dirLink(from,to,mode){
+  let u="https://www.google.com/maps/dir/?api=1&travelmode="+(mode||"transit");
+  if(from)u+="&origin="+from.lat+","+from.lng+(from.pid?"&origin_place_id="+enc(from):"");
+  u+="&destination="+to.lat+","+to.lng+(to.pid?"&destination_place_id="+enc(to):"");return u}
+const HOTELP={id:"hotel",n:"Coral Hotel",lat:HOTEL.lat,lng:HOTEL.lng};
+function allPlaces(){return [...RESULTS.map((p,i)=>({...p,_k:"r:"+i,_g:"Search results"})),...pins.map(p=>({...p,_k:"pin:"+p.id,_g:"Your pins"})),
+  ...P.map(p=>({id:p.id,pid:p.id,n:p.n,lat:p.lat,lng:p.lng,_k:"p:"+p.id,_g:"Guardian and food list"}))]}
+function placeByKey(k){if(k==="hotel")return HOTELP;if(k==="me")return S.me?{n:"My location",...S.me}:null;return allPlaces().find(p=>p._k===k)||null}
+function fillRoute(){const opts=allPlaces();const grp={};opts.forEach(p=>{(grp[p._g]=grp[p._g]||[]).push(p)});
+  const html=`<option value="me">My location</option><option value="hotel">Coral Hotel</option>`+Object.entries(grp).map(([g,l])=>`<optgroup label="${esc(g)}">${l.map(p=>`<option value="${esc(p._k)}">${esc(p.n)}</option>`).join("")}</optgroup>`).join("");
+  ["#rFrom","#rTo"].forEach(id=>{const el=$(id),v=el.value;el.innerHTML=html;if([...el.options].some(o=>o.value===v))el.value=v});}
+function setRoute(which,p){fillRoute();const k=p.id==="hotel"?"hotel":(RESULTS.findIndex(x=>x.id===p.id)>=0?"r:"+RESULTS.findIndex(x=>x.id===p.id):(pins.some(x=>x.id===p.id)?"pin:"+p.id:"p:"+p.id));
+  const el=$(which==="from"?"#rFrom":"#rTo");el.value=k;$("#route").scrollIntoView({behavior:"smooth",block:"center"});closeSheet()}
+function pinCard(p){const d=pinDist(p),saved=pins.some(x=>x.id===p.id);CUR=p;
+  return `<article class="card" style="--c:${saved?PINC:RESC}">
   <div class="r1"><h2>${esc(p.n)}</h2><button class="close" data-close aria-label="Close">✕</button></div>
-  <p class="meta"><b>${saved?"Your pin":"Search result"}</b>, ${esc(p.a||"")} <span class="dist">(${d<1?Math.round(d*1000)+" m":d.toFixed(1)+" km"} from the hotel)</span></p>
+  <p class="meta"><b>${saved?"Your pin":"Search result"}</b>, ${esc(p.a||"")} <span class="dist">(${fmtD(d)} from the hotel)</span></p>
   ${p.hrs?`<p class="note">${esc(p.hrs)}</p>`:""}
   <div class="acts">
-    <a class="go" href="${pinDir(p)}" target="_blank" rel="noopener">Directions from hotel</a>
+    <a class="go" href="${dirLink(null,p)}" target="_blank" rel="noopener">From my location</a>
+    <a href="${dirLink(HOTELP,p)}" target="_blank" rel="noopener">From hotel</a>
+    <a href="${dirLink(p,HOTELP)}" target="_blank" rel="noopener">Back to hotel</a>
+    <button data-setfrom="1">Set as From</button><button data-setto="1">Set as To</button>
     ${p.url?`<a href="${p.url}" target="_blank" rel="noopener">Google Maps</a>`:""}
     ${p.web?`<a href="${p.web}" target="_blank" rel="noopener">Website</a>`:""}
     ${saved?`<button data-pindel="${esc(p.id)}">Remove pin</button>`:`<button data-pinsave="1">Save as pin</button>`}
   </div></article>`}
-function showPin(p,isTemp){TEMP=isTemp?p:null;S.sel=null;$("#sheet").innerHTML=pinCard(p,isTemp);$("#sheet").classList.add("show")}
+function showPin(p){S.sel=null;$("#sheet").innerHTML=pinCard(p);$("#sheet").classList.add("show")}
+function goTo(p){if(GMODE==="g"&&GMAP){GMAP.panTo({lat:p.lat,lng:p.lng});if(GMAP.getZoom()<14)GMAP.setZoom(15)}else if(LMAP)LMAP.setView([p.lat,p.lng],15);
+  $("#lmap").scrollIntoView({behavior:"smooth",block:"center"})}
 function renderPins(){
-  if(GMODE==="g"&&GMAP){GPINS.forEach(m=>m.setMap(null));GPINS=[];
+  if(GMODE==="g"&&GMAP){GPINS.forEach(m=>m.setMap(null));GPINS=[];GRES.forEach(m=>m.setMap(null));GRES=[];
+    const lab=t=>S.labels?{text:t,className:"glabel",color:"#16202B",fontSize:"11px",fontWeight:"600"}:null;
     pins.forEach(p=>{const m=new google.maps.Marker({map:GMAP,position:{lat:p.lat,lng:p.lng},title:p.n,zIndex:400,
-      icon:{path:"M 0 -14 L 8 0 L 0 14 L -8 0 Z",fillColor:PINC,fillOpacity:1,strokeColor:"#fff",strokeWeight:2,labelOrigin:new google.maps.Point(12,0)},
-      label:S.labels?{text:p.n,className:"glabel",color:"#16202B",fontSize:"11px",fontWeight:"600"}:null});
-      m.addListener("click",()=>showPin(p,false));GPINS.push(m)})}
-  const box=$("#pinList");if(box)box.innerHTML=pins.length?`<h3>Your pins</h3>`+pins.map(p=>`<button data-pinopen="${esc(p.id)}" style="--c:${PINC}"><span class="dot"></span>${esc(p.n)}</button>`).join(""):"";
+      icon:{path:"M 0 -14 L 8 0 L 0 14 L -8 0 Z",fillColor:PINC,fillOpacity:1,strokeColor:"#fff",strokeWeight:2,labelOrigin:new google.maps.Point(12,0)},label:lab(p.n)});
+      m.addListener("click",()=>showPin(p));GPINS.push(m)});
+    RESULTS.forEach((p,i)=>{if(pins.some(x=>x.id===p.id))return;const m=new google.maps.Marker({map:GMAP,position:{lat:p.lat,lng:p.lng},title:p.n,zIndex:450,
+      icon:{path:google.maps.SymbolPath.CIRCLE,scale:10,fillColor:RESC,fillOpacity:1,strokeColor:"#fff",strokeWeight:2},
+      label:{text:String(i+1),color:"#fff",fontSize:"11px",fontWeight:"700"}});
+      m.addListener("click",()=>showPin(p));GRES.push(m)})}
+  $("#sResults").innerHTML=RESULTS.length?`<h3>${RESULTS.length} result${RESULTS.length>1?"s":""} (orange on the map)</h3>`+RESULTS.map((p,i)=>`<button data-resopen="${i}" style="--c:${RESC}"><span class="dot"></span>${i+1}. ${esc(p.n)} <span class="dist">${fmtD(pinDist(p))} from hotel</span></button>`).join(""):"";
+  $("#pinList").innerHTML=pins.length?`<h3>Your pins</h3>`+pins.map(p=>`<button data-pinopen="${esc(p.id)}" style="--c:${PINC}"><span class="dot"></span>${esc(p.n)}</button>`).join(""):"";
+  fillRoute();
 }
-async function initSearch(){if(SEARCH_READY||GMODE!=="g")return;SEARCH_READY=true;
-  try{const {PlaceAutocompleteElement}=await google.maps.importLibrary("places");
-    const ac=new PlaceAutocompleteElement({includedRegionCodes:["gr"],locationBias:{center:{lat:37.97,lng:23.73},radius:50000}});
-    $("#gsearch").appendChild(ac);
-    const handle=async place=>{try{
-        await place.fetchFields({fields:["id","displayName","formattedAddress","location","googleMapsURI","websiteURI","regularOpeningHours"]});
-        const loc=place.location;const p={id:"g:"+place.id,pid:place.id,n:place.displayName||"Place",a:place.formattedAddress||"",lat:loc.lat(),lng:loc.lng(),url:place.googleMapsURI||"",web:place.websiteURI||"",
-          hrs:place.regularOpeningHours&&place.regularOpeningHours.weekdayDescriptions?place.regularOpeningHours.weekdayDescriptions.join(" · "):""};
-        if(GTEMP)GTEMP.setMap(null);
-        GTEMP=new google.maps.Marker({map:GMAP,position:{lat:p.lat,lng:p.lng},zIndex:600,title:p.n});
-        GMAP.panTo({lat:p.lat,lng:p.lng});if(GMAP.getZoom()<14)GMAP.setZoom(15);
-        showPin(p,true)}catch(err){$("#gsHint").textContent="Couldn't load that place. Search needs Places API (New) switched on for the key in Google Cloud."}};
-    ac.addEventListener("gmp-select",ev=>{if(ev.placePrediction)handle(ev.placePrediction.toPlace())});
-    ac.addEventListener("gmp-placeselect",ev=>{if(ev.place)handle(ev.place)});
-  }catch(err){$("#gsHint").textContent="Search isn't available: switch on Places API (New) for the key in Google Cloud."}}
+async function doSearch(q){q=(q||"").trim();if(!q)return;
+  if(GMODE!=="g"){$("#gsHint").textContent="Search needs Google Maps, which didn't load.";return}
+  $("#gsHint").textContent="Searching…";
+  try{if(!PLACES_LIB)PLACES_LIB=await google.maps.importLibrary("places");
+    const {places}=await PLACES_LIB.Place.searchByText({textQuery:q,fields:["id","displayName","formattedAddress","location","googleMapsURI","websiteURI","regularOpeningHours"],
+      locationBias:{south:37.6,west:23.3,north:38.25,east:24.1},maxResultCount:12,language:"en",region:"gr"});
+    RESULTS=(places||[]).map(pl=>({id:"g:"+pl.id,pid:pl.id,n:pl.displayName||"Place",a:pl.formattedAddress||"",lat:pl.location.lat(),lng:pl.location.lng(),
+      url:pl.googleMapsURI||"",web:pl.websiteURI||"",hrs:pl.regularOpeningHours&&pl.regularOpeningHours.weekdayDescriptions?pl.regularOpeningHours.weekdayDescriptions.join(" · "):""}));
+    $("#gsHint").textContent=RESULTS.length?"Tap a result or an orange dot for details and directions.":"No places found. Try another name.";
+    renderPins();
+    if(RESULTS.length&&GMAP){if(RESULTS.length===1){GMAP.setCenter({lat:RESULTS[0].lat,lng:RESULTS[0].lng});GMAP.setZoom(15)}
+      else{const bd=new google.maps.LatLngBounds();RESULTS.forEach(p=>bd.extend({lat:p.lat,lng:p.lng}));GMAP.fitBounds(bd,40)}}
+  }catch(err){console.error(err);$("#gsHint").textContent="Search failed. In Google Cloud, switch on Places API (New) and allow it on the key."}}
 
 function openSheet(id){S.sel=id;const p=P.find(x=>x.id===id);$("#sheet").innerHTML=card(p,true);$("#sheet").classList.add("show");if(S.view==="map")renderMap()}
-function closeSheet(){S.sel=null;if(TEMP&&GTEMP&&!pins.some(x=>x.id===TEMP.id)){GTEMP.setMap(null);GTEMP=null}TEMP=null;$("#sheet").classList.remove("show");if(S.view==="map")renderMap()}
+function closeSheet(){S.sel=null;$("#sheet").classList.remove("show");if(S.view==="map")renderMap()}
 
 function render(){renderChips();S.view==="list"?renderList():renderMap();
   if(S.sel&&$("#sheet").classList.contains("show")){const p=P.find(x=>x.id===S.sel);$("#sheet").innerHTML=card(p,true)}}
@@ -391,14 +432,25 @@ document.addEventListener("click",e=>{
   if(t.dataset.been){const id=t.dataset.been;been.has(id)?been.delete(id):been.add(id);persist();render();return}
   if(t.dataset.pin){openSheet(t.dataset.pin);return}
   if(t.dataset.pick){openSheet(t.dataset.pick);return}
-  if(t.dataset.pinsave){if(TEMP&&!pins.some(x=>x.id===TEMP.id)){pins.push(TEMP);savePins();if(GTEMP){GTEMP.setMap(null);GTEMP=null}renderPins();showPin(TEMP,false)}return}
+  if(t.dataset.pinsave){if(CUR&&!pins.some(x=>x.id===CUR.id)){pins.push(CUR);savePins();renderPins();showPin(CUR)}return}
   if(t.dataset.pindel){pins=pins.filter(x=>x.id!==t.dataset.pindel);savePins();renderPins();closeSheet();return}
-  if(t.dataset.pinopen){const p=pins.find(x=>x.id===t.dataset.pinopen);if(p){if(GMODE==="g"&&GMAP){GMAP.panTo({lat:p.lat,lng:p.lng});if(GMAP.getZoom()<14)GMAP.setZoom(15)}else if(LMAP)LMAP.setView([p.lat,p.lng],15);showPin(p,false)}return}
+  if(t.dataset.pinopen){const p=pins.find(x=>x.id===t.dataset.pinopen);if(p){goTo(p);showPin(p)}return}
+  if(t.dataset.resopen){const p=RESULTS[+t.dataset.resopen];if(p){goTo(p);showPin(p)}return}
+  if(t.dataset.cfrom||t.dataset.cto){const id=t.dataset.cfrom||t.dataset.cto,p=P.find(x=>x.id===id);if(p){if(S.view!=="map")$("#vMap").click();setRoute(t.dataset.cfrom?"from":"to",{id:p.id})}return}
+  if(t.dataset.setfrom){if(CUR)setRoute("from",CUR);return}
+  if(t.dataset.setto){if(CUR)setRoute("to",CUR);return}
   if(t.hasAttribute("data-close")){closeSheet();return}
 });
+$("#sForm").addEventListener("submit",e=>{e.preventDefault();$("#sQ").blur();doSearch($("#sQ").value)});
+$("#sClear").onclick=()=>{RESULTS=[];$("#sQ").value="";$("#gsHint").textContent="Results show on the map in orange. Save any as a pin (purple) to plan your days.";renderPins()};
+$("#rSwap").onclick=()=>{const a=$("#rFrom").value;$("#rFrom").value=$("#rTo").value;$("#rTo").value=a};
+$("#rGo").onclick=()=>{const fk=$("#rFrom").value,tk=$("#rTo").value,mode=$("#rMode").value;
+  if(fk===tk){$("#rMsg").textContent="From and To are the same.";return}
+  const to=placeByKey(tk);if(!to){$("#rMsg").textContent="To use My location as the destination, tap Locate me first.";return}
+  const from=fk==="me"?null:placeByKey(fk);$("#rMsg").textContent="";window.open(dirLink(from,to,mode),"_blank","noopener")};
 $("#q").addEventListener("input",e=>{S.q=e.target.value;render()});
-$("#vList").onclick=()=>{S.view="list";$("#vList").setAttribute("aria-pressed","true");$("#vMap").setAttribute("aria-pressed","false");$("#list").hidden=false;$("#mapView").hidden=true;closeSheet();render()};
-$("#vMap").onclick=()=>{S.view="map";$("#vMap").setAttribute("aria-pressed","true");$("#vList").setAttribute("aria-pressed","false");$("#list").hidden=true;$("#mapView").hidden=false;render()};
+$("#vList").onclick=()=>{S.view="list";document.body.classList.remove("mapmode");$("#vList").setAttribute("aria-pressed","true");$("#vMap").setAttribute("aria-pressed","false");$("#list").hidden=false;$("#mapView").hidden=true;closeSheet();render()};
+$("#vMap").onclick=()=>{S.view="map";document.body.classList.add("mapmode");$("#vMap").setAttribute("aria-pressed","true");$("#vList").setAttribute("aria-pressed","false");$("#list").hidden=true;$("#mapView").hidden=false;render()};
 $("#zAll").onclick=()=>mapView(37.965,23.715,13);
 $("#zReg").onclick=()=>mapFit(37.80,23.66,38.02,23.95);
 $("#zCtr").onclick=()=>mapView(37.978,23.729,16);
@@ -425,6 +477,7 @@ $("#near").onclick=e=>{
     S.me={lat:pos.coords.latitude,lng:pos.coords.longitude};S.near=true;b.textContent="Nearest";b.setAttribute("aria-pressed","true");$("#msg").innerHTML="";render()},
     ()=>{b.textContent="Nearest";fail()},{enableHighAccuracy:true,timeout:10000,maximumAge:60000});
 };
+try{fillRoute()}catch(e){}
 tick();render();
 setInterval(()=>{tick();render()},60000);
 </script>
